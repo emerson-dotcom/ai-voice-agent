@@ -1,0 +1,37 @@
+# Core Framework
+fastapi>=0.100.0,<1.0.0
+uvicorn[standard]>=0.20.0,<1.0.0
+python-multipart>=0.0.5
+
+# Database
+sqlalchemy>=2.0.0,<3.0.0
+alembic>=1.10.0
+asyncpg>=0.28.0
+supabase>=2.0.0,<3.0.0
+
+# Authentication
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.0
+
+# HTTP & WebSockets
+httpx>=0.24.0
+websockets>=11.0.0
+python-socketio>=5.8.0
+
+# Background Tasks (Optional - can be installed later if needed)
+# celery>=5.3.0
+# redis>=4.5.0
+
+# NLP & AI
+openai>=1.0.0
+# spacy>=3.7.0  # Optional - can be installed later if needed
+
+# Utilities
+python-dotenv>=1.0.0
+pydantic>=2.0.0,<3.0.0
+pydantic-settings>=2.0.0
+email-validator>=2.0.0
+
+# Development (Optional)
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
