@@ -6,39 +6,41 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
-import { useCallHistory, useActiveCalls, useInitiateCall, useCancelCall } from '@/hooks/use-calls'
+import { useCalls, useActiveCalls, useInitiateCall, useCancelCall } from '@/hooks/use-calls'
 import { useAgentConfigs } from '@/hooks/use-agents'
-import { formatDistanceToNow, format } from 'date-fns'
+import type { Call, AgentConfiguration, CallList, AgentConfigList } from '@/types'
+import { format } from 'date-fns'
 import { 
   Phone, 
   Plus, 
   Search, 
-  Filter,
   PhoneCall,
   PhoneOff,
   Clock,
   CheckCircle,
   XCircle,
-  AlertCircle,
   Eye,
   PlayCircle,
   StopCircle,
   User,
   Truck,
-  MapPin
+  Globe
 } from 'lucide-react'
 
 export default function CallManagementPage() {
-  const { data: callHistory = [], isLoading: historyLoading } = useCallHistory()
-  const { data: activeCalls = [], isLoading: activeLoading } = useActiveCalls()
+  const { data: callHistoryData, isLoading: historyLoading } = useCalls()
+  const { data: activeCallsData, isLoading: activeLoading } = useActiveCalls()
   const { data: agentData } = useAgentConfigs()
+  
+  // Extract the actual arrays from the API response
+  const callHistory: Call[] = (callHistoryData as CallList)?.calls || []
+  const activeCalls: Call[] = (activeCallsData as Call[]) || []
+  const agentConfigs: AgentConfiguration[] = (agentData as AgentConfigList)?.configs || []
   const cancelCall = useCancelCall()
   
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [showNewCallForm, setShowNewCallForm] = useState(false)
-
-  const agentConfigs = agentData?.configs || []
 
   const filteredCalls = callHistory.filter(call => {
     const matchesSearch = !searchTerm || 
@@ -104,9 +106,11 @@ export default function CallManagementPage() {
           <h1 className="text-2xl font-bold text-gray-900">Call Management</h1>
           <p className="text-gray-600">Monitor and manage voice calls to drivers</p>
         </div>
-        <Button onClick={() => setShowNewCallForm(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Start New Call
+        <Button asChild>
+          <Link href="/dashboard/calls/new">
+            <Plus className="h-4 w-4 mr-2" />
+            Start New Call
+          </Link>
         </Button>
       </div>
 
@@ -143,6 +147,16 @@ export default function CallManagementPage() {
                     )}
                     {getStatusBadge(call.status)}
                     <div className="flex space-x-2">
+                      {call.conversation_metadata?.web_call_url && (
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => window.open(call.conversation_metadata?.web_call_url, '_blank')}
+                          title="Open web call"
+                        >
+                          <Globe className="h-4 w-4" />
+                        </Button>
+                      )}
                       <Button variant="outline" size="sm" asChild>
                         <Link href={`/dashboard/calls/${call.id}`}>
                           <Eye className="h-4 w-4" />
@@ -298,11 +312,23 @@ export default function CallManagementPage() {
                       )}
                     </div>
                     {getStatusBadge(call.status)}
-                    <Button variant="outline" size="sm" asChild>
-                      <Link href={`/dashboard/calls/${call.id}`}>
-                        <Eye className="h-4 w-4" />
-                      </Link>
-                    </Button>
+                    <div className="flex space-x-2">
+                      {call.conversation_metadata?.web_call_url && (
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => window.open(call.conversation_metadata?.web_call_url, '_blank')}
+                          title="Open web call"
+                        >
+                          <Globe className="h-4 w-4" />
+                        </Button>
+                      )}
+                      <Button variant="outline" size="sm" asChild>
+                        <Link href={`/dashboard/calls/${call.id}`}>
+                          <Eye className="h-4 w-4" />
+                        </Link>
+                      </Button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -315,12 +341,13 @@ export default function CallManagementPage() {
 }
 
 // New Call Form Component
-function NewCallForm({ agentConfigs, onClose }: { agentConfigs: any[], onClose: () => void }) {
+function NewCallForm({ agentConfigs, onClose }: { agentConfigs: AgentConfiguration[], onClose: () => void }) {
   const [formData, setFormData] = useState({
     driverName: '',
     phoneNumber: '',
     loadNumber: '',
-    agentConfigId: ''
+    agentConfigId: '',
+    callType: 'phone_call'
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
   
@@ -347,6 +374,10 @@ function NewCallForm({ agentConfigs, onClose }: { agentConfigs: any[], onClose: 
       newErrors.agentConfigId = 'Agent configuration is required'
     }
     
+    if (!formData.callType) {
+      newErrors.callType = 'Call type is required'
+    }
+    
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
@@ -361,7 +392,8 @@ function NewCallForm({ agentConfigs, onClose }: { agentConfigs: any[], onClose: 
         driver_name: formData.driverName,
         phone_number: formData.phoneNumber,
         load_number: formData.loadNumber,
-        agent_config_id: parseInt(formData.agentConfigId)
+        agent_config_id: parseInt(formData.agentConfigId),
+        call_type: formData.callType
       })
       onClose()
     } catch (error) {
@@ -420,6 +452,24 @@ function NewCallForm({ agentConfigs, onClose }: { agentConfigs: any[], onClose: 
             ))}
           </select>
           {errors.agentConfigId && <p className="text-sm text-red-600 mt-1">{errors.agentConfigId}</p>}
+        </div>
+        
+        <div>
+          <label className="block text-sm font-medium mb-2">Call Type</label>
+          <select
+            value={formData.callType}
+            onChange={(e) => setFormData(prev => ({ ...prev, callType: e.target.value }))}
+            className={`w-full px-3 py-2 border rounded-md ${errors.callType ? 'border-red-500' : 'border-gray-300'}`}
+          >
+            <option value="phone_call">📞 Phone Call (Direct)</option>
+            <option value="web_call">🌐 Web Call (Browser-based)</option>
+          </select>
+          {errors.callType && <p className="text-sm text-red-600 mt-1">{errors.callType}</p>}
+          <p className="text-xs text-gray-500 mt-1">
+            {formData.callType === 'web_call' 
+              ? 'Creates a web-based call that opens in browser' 
+              : 'Creates a direct phone call to the driver\'s number'}
+          </p>
         </div>
       </div>
       

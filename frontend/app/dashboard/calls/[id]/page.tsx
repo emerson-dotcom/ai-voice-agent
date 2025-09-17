@@ -6,7 +6,8 @@ import Link from 'next/link'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { useCallDetails, useCallTranscript, useCancelCall } from '@/hooks/use-calls'
+import { useCallDetail, useCallTranscript, useCancelCall } from '@/hooks/use-calls'
+import type { CallDetail, Transcript } from '@/types'
 import { format } from 'date-fns'
 import { 
   ArrowLeft,
@@ -15,24 +16,22 @@ import {
   Clock,
   User,
   Truck,
-  MapPin,
   CheckCircle,
   XCircle,
   AlertTriangle,
   Download,
-  Play,
-  Pause,
-  Volume2,
   FileText,
-  BarChart3
+  BarChart3,
+  ExternalLink,
+  Globe
 } from 'lucide-react'
 
 export default function CallDetailPage() {
   const params = useParams()
   const id = params?.id as string
   
-  const { data: call, isLoading } = useCallDetails(parseInt(id))
-  const { data: transcript } = useCallTranscript(parseInt(id))
+  const { data: call, isLoading } = useCallDetail(parseInt(id)) as { data: CallDetail | undefined, isLoading: boolean }
+  const { data: transcript } = useCallTranscript(parseInt(id)) as { data: Transcript | undefined }
   const cancelCall = useCancelCall()
   
   const [showTranscript, setShowTranscript] = useState(true)
@@ -80,7 +79,7 @@ export default function CallDetailPage() {
     return `${mins}:${secs.toString().padStart(2, '0')}`
   }
 
-  const getDataQualityScore = (data: any) => {
+  const getDataQualityScore = (data: Record<string, unknown> | null | undefined) => {
     if (!data) return 0
     const fields = Object.values(data).filter(value => 
       value !== null && value !== undefined && value !== ''
@@ -102,7 +101,7 @@ export default function CallDetailPage() {
         call_outcome: call.call_outcome,
         duration: call.duration,
         created_at: call.created_at,
-        completed_at: call.completed_at
+        completed_at: call.end_time
       },
       structured_data: call.structured_data,
       transcript: transcript
@@ -205,6 +204,27 @@ export default function CallDetailPage() {
                   </div>
                 </div>
                 
+                {call.web_call_url && (
+                  <div className="flex items-center space-x-3">
+                    <Globe className="h-5 w-5 text-blue-400" />
+                    <div className="flex-1">
+                      <p className="text-sm text-gray-600">Web Call</p>
+                      <div className="flex items-center space-x-2">
+                        <p className="font-medium text-blue-600 truncate">{call.web_call_url}</p>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => window.open(call.web_call_url, '_blank')}
+                          className="shrink-0"
+                        >
+                          <ExternalLink className="h-3 w-3 mr-1" />
+                          Open Call
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
                 <div className="flex items-center space-x-3">
                   <Truck className="h-5 w-5 text-gray-400" />
                   <div>
@@ -220,10 +240,10 @@ export default function CallDetailPage() {
                   <p className="font-medium">{format(new Date(call.created_at), 'MMM d, yyyy HH:mm:ss')}</p>
                 </div>
                 
-                {call.completed_at && (
+                {call.end_time && (
                   <div>
                     <p className="text-sm text-gray-600">Call Ended</p>
-                    <p className="font-medium">{format(new Date(call.completed_at), 'MMM d, yyyy HH:mm:ss')}</p>
+                    <p className="font-medium">{format(new Date(call.end_time), 'MMM d, yyyy HH:mm:ss')}</p>
                   </div>
                 )}
                 
@@ -234,10 +254,10 @@ export default function CallDetailPage() {
                   </div>
                 )}
                 
-                {call.agent_config && (
+                {call.agent_config_name && (
                   <div>
                     <p className="text-sm text-gray-600">Agent Configuration</p>
-                    <p className="font-medium">{call.agent_config.name}</p>
+                    <p className="font-medium">{call.agent_config_name}</p>
                   </div>
                 )}
               </div>
@@ -349,7 +369,7 @@ export default function CallDetailPage() {
       )}
 
       {/* Transcript */}
-      {transcript && (
+      {(transcript || call.raw_transcript) && (
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
@@ -372,8 +392,9 @@ export default function CallDetailPage() {
           {showTranscript && (
             <CardContent>
               <div className="space-y-4 max-h-96 overflow-y-auto">
-                {transcript.turns && transcript.turns.length > 0 ? (
-                  transcript.turns.map((turn: any, index: number) => (
+                {transcript && transcript.turns && transcript.turns.length > 0 ? (
+                  // Structured transcript with turns
+                  transcript.turns.map((turn: { speaker: string; message: string; timestamp?: string; confidence_score?: number; emergency_trigger_detected?: boolean }, index: number) => (
                     <div key={index} className={`flex ${turn.speaker === 'agent' ? 'justify-start' : 'justify-end'}`}>
                       <div className={`max-w-3xl p-3 rounded-lg ${
                         turn.speaker === 'agent' 
@@ -405,6 +426,13 @@ export default function CallDetailPage() {
                       </div>
                     </div>
                   ))
+                ) : call.raw_transcript ? (
+                  // Raw transcript as formatted text
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <pre className="text-sm text-gray-900 whitespace-pre-wrap font-mono leading-relaxed">
+                      {call.raw_transcript}
+                    </pre>
+                  </div>
                 ) : (
                   <p className="text-sm text-gray-500 text-center py-8">
                     {call.status === 'in_progress' ? 'Transcript will appear as the call progresses...' : 'No transcript available'}

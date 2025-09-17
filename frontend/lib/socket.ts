@@ -96,22 +96,22 @@ class SocketManager {
   }
 
   // Event emitter for React components
-  private eventHandlers: Record<string, Function[]> = {}
+  private eventHandlers: Record<string, ((data: unknown) => void)[]> = {}
 
-  on(event: string, handler: Function): void {
+  on<T = unknown>(event: string, handler: (data: T) => void): void {
     if (!this.eventHandlers[event]) {
       this.eventHandlers[event] = []
     }
-    this.eventHandlers[event].push(handler)
+    this.eventHandlers[event].push(handler as (data: unknown) => void)
   }
 
-  off(event: string, handler: Function): void {
+  off<T = unknown>(event: string, handler: (data: T) => void): void {
     if (this.eventHandlers[event]) {
-      this.eventHandlers[event] = this.eventHandlers[event].filter(h => h !== handler)
+      this.eventHandlers[event] = this.eventHandlers[event].filter(h => h !== (handler as (data: unknown) => void))
     }
   }
 
-  private emit(event: string, data: any): void {
+  private emit<T = unknown>(event: string, data: T): void {
     if (this.eventHandlers[event]) {
       this.eventHandlers[event].forEach(handler => handler(data))
     }

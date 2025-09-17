@@ -52,21 +52,33 @@ class ApiClient {
       throw new Error(errorData.detail || `HTTP error! status: ${response.status}`)
     }
 
-    return response.json()
+    // Handle 204 No Content responses (like DELETE operations)
+    if (response.status === 204) {
+      return undefined as T
+    }
+
+    // For responses with content, parse as JSON
+    const contentType = response.headers.get('content-type')
+    if (contentType && contentType.includes('application/json')) {
+      return response.json()
+    }
+
+    // If no JSON content, return undefined
+    return undefined as T
   }
 
   async get<T>(endpoint: string): Promise<T> {
     return this.request<T>(endpoint, { method: 'GET' })
   }
 
-  async post<T>(endpoint: string, data?: any): Promise<T> {
+  async post<T>(endpoint: string, data?: unknown): Promise<T> {
     return this.request<T>(endpoint, {
       method: 'POST',
       body: data ? JSON.stringify(data) : undefined,
     })
   }
 
-  async put<T>(endpoint: string, data?: any): Promise<T> {
+  async put<T>(endpoint: string, data?: unknown): Promise<T> {
     return this.request<T>(endpoint, {
       method: 'PUT',
       body: data ? JSON.stringify(data) : undefined,
@@ -99,7 +111,7 @@ class ApiClient {
   }
 
   async register(email: string, password: string, fullName?: string) {
-    return this.post('/api/v1/auth/register', {
+    return this.post<import('@/types').User>('/api/v1/auth/register', {
       email,
       password,
       full_name: fullName,
@@ -123,27 +135,27 @@ class ApiClient {
     }
     
     const endpoint = `/api/v1/agents${searchParams.toString() ? `?${searchParams.toString()}` : ''}`
-    return this.get(endpoint)
+    return this.get<import('@/types').AgentConfigList>(endpoint)
   }
 
-  async createAgentConfig(data: any) {
-    return this.post('/api/v1/agents', data)
+  async createAgentConfig(data: unknown) {
+    return this.post<import('@/types').AgentConfiguration>('/api/v1/agents', data)
   }
 
   async getAgentConfig(id: number) {
-    return this.get(`/api/v1/agents/${id}`)
+    return this.get<import('@/types').AgentConfiguration>(`/api/v1/agents/${id}`)
   }
 
-  async updateAgentConfig(id: number, data: any) {
-    return this.put(`/api/v1/agents/${id}`, data)
+  async updateAgentConfig(id: number, data: unknown) {
+    return this.put<import('@/types').AgentConfiguration>(`/api/v1/agents/${id}`, data)
   }
 
   async deleteAgentConfig(id: number) {
     return this.delete(`/api/v1/agents/${id}`)
   }
 
-  async deployAgentConfig(id: number) {
-    return this.post(`/api/v1/agents/${id}/deploy`)
+  async deployAgentConfig(id: number, deploy: boolean = true) {
+    return this.post<import('@/types').AgentConfiguration>(`/api/v1/agents/${id}/deploy?deploy=${deploy}`)
   }
 
   async testAgentConfig(id: number, testPhone: string) {
@@ -156,8 +168,9 @@ class ApiClient {
     phone_number: string
     load_number: string
     agent_config_id: number
+    call_type?: string
   }) {
-    return this.post('/api/v1/calls/initiate', data)
+    return this.post<import('@/types').Call>('/api/v1/calls/initiate', data)
   }
 
   async getCalls(params?: {
@@ -177,27 +190,27 @@ class ApiClient {
     }
     
     const endpoint = `/api/v1/calls${searchParams.toString() ? `?${searchParams.toString()}` : ''}`
-    return this.get(endpoint)
+    return this.get<import('@/types').CallList>(endpoint)
   }
 
   async getActiveCalls() {
-    return this.get('/api/v1/calls/active')
+    return this.get<import('@/types').Call[]>('/api/v1/calls/active')
   }
 
   async getCallDetails(id: number) {
-    return this.get(`/api/v1/calls/${id}`)
+    return this.get<import('@/types').CallDetail>(`/api/v1/calls/${id}`)
   }
 
   async getCallTranscript(id: number) {
-    return this.get(`/api/v1/calls/${id}/transcript`)
+    return this.get<import('@/types').Transcript>(`/api/v1/calls/${id}/transcript`)
   }
 
   async cancelCall(id: number) {
-    return this.post(`/api/v1/calls/${id}/cancel`)
+    return this.post<import('@/types').Call>(`/api/v1/calls/${id}/cancel`)
   }
 
   async retryCall(id: number) {
-    return this.post(`/api/v1/calls/${id}/retry`)
+    return this.post<import('@/types').Call>(`/api/v1/calls/${id}/retry`)
   }
 
   async getCallStatus(id: number) {
@@ -205,7 +218,7 @@ class ApiClient {
   }
 
   async getAnalytics(days: number = 7) {
-    return this.get(`/api/v1/calls/analytics/summary?days=${days}`)
+    return this.get<import('@/types').CallAnalytics>(`/api/v1/calls/analytics/summary?days=${days}`)
   }
 }
 

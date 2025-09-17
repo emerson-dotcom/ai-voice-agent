@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { useActiveCalls, useCallAnalytics } from '@/hooks/use-calls'
 import { useAgentConfigs } from '@/hooks/use-agents'
+import type { Call, CallAnalytics } from '@/types'
 import { formatDuration, getStatusColor } from '@/lib/utils'
 import { 
   Phone, 
@@ -15,14 +16,13 @@ import {
   TrendingUp, 
   Clock,
   CheckCircle,
-  AlertCircle,
-  Users
+  AlertCircle
 } from 'lucide-react'
 
 export default function DashboardPage() {
-  const { data: activeCalls = [], isLoading: callsLoading } = useActiveCalls()
-  const { data: analytics, isLoading: analyticsLoading } = useCallAnalytics(7)
-  const { data: agentData, isLoading: agentsLoading } = useAgentConfigs()
+  const { data: activeCalls = [], isLoading: callsLoading } = useActiveCalls() as { data: Call[], isLoading: boolean }
+  const { data: analytics, isLoading: analyticsLoading } = useCallAnalytics(7) as { data: CallAnalytics | undefined, isLoading: boolean }
+  const { data: agentData } = useAgentConfigs()
 
   const agentConfigs = agentData?.configs || []
   const activeAgents = agentConfigs.filter(config => config.is_active && config.is_deployed)

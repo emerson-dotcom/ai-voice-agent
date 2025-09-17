@@ -19,7 +19,6 @@ import {
   Settings,
   Mic,
   MessageSquare,
-  Zap,
   TestTube,
   Play
 } from 'lucide-react'
@@ -38,14 +37,23 @@ const agentConfigSchema = z.object({
     follow_up: z.string().min(10, 'Follow-up prompt must be at least 10 characters'),
     closing: z.string().min(10, 'Closing prompt must be at least 10 characters'),
     emergency_trigger: z.string().optional(),
+    probing_questions: z.array(z.string()).optional(),
   }),
   voice_settings: z.object({
-    speed: z.number().min(0.5).max(2.0),
+    voice_speed: z.number().min(0.5).max(2.0),
+    voice_temperature: z.number().min(0).max(2.0).optional(),
+    responsiveness: z.number().min(0).max(2.0).optional(),
     backchanneling: z.boolean(),
     filler_words: z.boolean(),
     interruption_sensitivity: z.number().min(0).max(1),
   }),
-  data_extraction_points: z.array(z.string()).optional(),
+  conversation_flow: z.object({
+    max_turns: z.number().min(5).max(50).optional(),
+    timeout_seconds: z.number().min(30).max(300).optional(),
+    retry_attempts: z.number().min(1).max(5).optional(),
+    emergency_keywords: z.array(z.string()).optional(),
+    data_extraction_points: z.array(z.string()).optional(),
+  }),
 })
 
 type AgentConfigFormData = z.infer<typeof agentConfigSchema>
@@ -61,22 +69,36 @@ const TEMPLATES = {
       follow_up: "Thank you for that update. Can you provide me with your current location and estimated time of arrival?",
       closing: "Perfect, I've got all the information I need. Please remember to send your proof of delivery when you're done. Drive safe!",
       emergency_trigger: "I understand this is urgent. Let me gather some important information to help you right away.",
+      probing_questions: [
+        "What's your current location?",
+        "What's your estimated time of arrival?",
+        "Are there any delays I should know about?",
+        "Do you need any assistance with the delivery?"
+      ]
     },
     voice_settings: {
-      speed: 1.0,
+      voice_speed: 1.0,
+      voice_temperature: 0.7,
+      responsiveness: 1.0,
       backchanneling: true,
       filler_words: true,
       interruption_sensitivity: 0.7,
     },
-    data_extraction_points: [
-      'call_outcome',
-      'driver_status',
-      'current_location',
-      'eta',
-      'delay_reason',
-      'unloading_status',
-      'pod_reminder_acknowledged'
-    ]
+    conversation_flow: {
+      max_turns: 20,
+      timeout_seconds: 120,
+      retry_attempts: 3,
+      emergency_keywords: ["emergency", "accident", "blowout", "medical", "breakdown", "crash", "injured"],
+      data_extraction_points: [
+        'call_outcome',
+        'driver_status',
+        'current_location',
+        'eta',
+        'delay_reason',
+        'unloading_status',
+        'pod_reminder_acknowledged'
+      ]
+    }
   },
   emergency: {
     name: 'Emergency Protocol Configuration',
@@ -87,22 +109,37 @@ const TEMPLATES = {
       follow_up: "I understand this is an emergency situation. First, are you and anyone else with you safe right now?",
       closing: "I'm connecting you with our emergency dispatcher right now. Please stay on the line while I transfer you.",
       emergency_trigger: "I hear this is an emergency. Let me help you right away. First, is everyone safe?",
+      probing_questions: [
+        "Are you and everyone with you safe?",
+        "What type of emergency is this?",
+        "What's your exact location?",
+        "Is the load secure?",
+        "Do you need immediate medical attention?"
+      ]
     },
     voice_settings: {
-      speed: 0.9,
+      voice_speed: 0.9,
+      voice_temperature: 0.5,
+      responsiveness: 1.5,
       backchanneling: false,
       filler_words: false,
       interruption_sensitivity: 0.9,
     },
-    data_extraction_points: [
-      'call_outcome',
-      'emergency_type',
-      'safety_status',
-      'injury_status',
-      'emergency_location',
-      'load_secure',
-      'escalation_status'
-    ]
+    conversation_flow: {
+      max_turns: 15,
+      timeout_seconds: 90,
+      retry_attempts: 2,
+      emergency_keywords: ["emergency", "accident", "crash", "medical", "injured", "breakdown", "fire", "danger"],
+      data_extraction_points: [
+        'call_outcome',
+        'emergency_type',
+        'safety_status',
+        'injury_status',
+        'emergency_location',
+        'load_secure',
+        'escalation_status'
+      ]
+    }
   }
 }
 
@@ -132,14 +169,23 @@ export default function NewAgentConfigPage() {
         follow_up: '',
         closing: '',
         emergency_trigger: '',
+        probing_questions: [],
       },
       voice_settings: {
-        speed: 1.0,
+        voice_speed: 1.0,
+        voice_temperature: 0.7,
+        responsiveness: 1.0,
         backchanneling: true,
         filler_words: true,
         interruption_sensitivity: 0.7,
       },
-      data_extraction_points: [],
+      conversation_flow: {
+        max_turns: 20,
+        timeout_seconds: 120,
+        retry_attempts: 3,
+        emergency_keywords: ["emergency", "accident", "blowout", "medical", "breakdown", "crash", "injured"],
+        data_extraction_points: [],
+      },
     },
   })
 
@@ -157,11 +203,22 @@ export default function NewAgentConfigPage() {
 
   const onSubmit = async (data: AgentConfigFormData) => {
     try {
-      await createAgent.mutateAsync({
+      // Set data extraction points based on scenario type
+      const dataExtractionPoints = data.scenario_type === 'check_in' 
+        ? ['call_outcome', 'driver_status', 'current_location', 'eta', 'delay_reason', 'unloading_status', 'pod_reminder_acknowledged']
+        : ['call_outcome', 'emergency_type', 'safety_status', 'injury_status', 'emergency_location', 'load_secure', 'escalation_status']
+      
+      const submitData = {
         ...data,
+        conversation_flow: {
+          ...data.conversation_flow,
+          data_extraction_points: dataExtractionPoints,
+        },
         is_active: true,
         is_deployed: false,
-      })
+      }
+      
+      await createAgent.mutateAsync(submitData)
       toast.success('Agent configuration created successfully!')
       router.push('/dashboard/agents')
     } catch (error) {
@@ -254,7 +311,16 @@ export default function NewAgentConfigPage() {
         </CardContent>
       </Card>
 
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+        <form 
+          onSubmit={handleSubmit(onSubmit)} 
+          onKeyDown={(e) => {
+            // Prevent form submission on Enter key except for submit buttons
+            if (e.key === 'Enter' && (e.target as HTMLElement).getAttribute('type') !== 'submit') {
+              e.preventDefault()
+            }
+          }}
+          className="space-y-6"
+        >
         {/* Step 1: Basic Information */}
         {currentStep === 1 && (
           <Card>
@@ -402,6 +468,41 @@ export default function NewAgentConfigPage() {
                 </div>
               )}
 
+              <div>
+                <label className="block text-sm font-medium mb-2">Data Extraction Points</label>
+                <p className="text-sm text-gray-600 mb-3">
+                  The following data points will be automatically extracted from conversations:
+                </p>
+                <div className="space-y-2">
+                  {scenarioType === 'check_in' ? (
+                    <div className="grid grid-cols-2 gap-2">
+                      {['call_outcome', 'driver_status', 'current_location', 'eta', 'delay_reason', 'unloading_status', 'pod_reminder_acknowledged'].map((point) => (
+                        <div key={point} className="flex items-center">
+                          <input type="checkbox" id={point} className="mr-2" defaultChecked disabled />
+                          <label htmlFor={point} className="text-sm capitalize text-gray-700">
+                            {point.replace('_', ' ')}
+                          </label>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2">
+                      {['call_outcome', 'emergency_type', 'safety_status', 'injury_status', 'emergency_location', 'load_secure', 'escalation_status'].map((point) => (
+                        <div key={point} className="flex items-center">
+                          <input type="checkbox" id={point} className="mr-2" defaultChecked disabled />
+                          <label htmlFor={point} className="text-sm capitalize text-gray-700">
+                            {point.replace('_', ' ')}
+                          </label>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <p className="text-xs text-gray-500 mt-2">
+                  These extraction points are automatically configured based on the scenario type
+                </p>
+              </div>
+
               <div className="flex justify-between">
                 <Button 
                   type="button" 
@@ -428,7 +529,7 @@ export default function NewAgentConfigPage() {
             <CardHeader>
               <CardTitle className="flex items-center">
                 <Mic className="h-5 w-5 mr-2" />
-                Voice Settings
+                Voice Configuration
               </CardTitle>
               <CardDescription>
                 Configure how your agent sounds and behaves during calls
@@ -438,10 +539,10 @@ export default function NewAgentConfigPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <label className="block text-sm font-medium mb-2">
-                    Speech Speed: {watch('voice_settings.speed')}x
+                    Speech Speed: {watch('voice_settings.voice_speed')}x
                   </label>
                   <Controller
-                    name="voice_settings.speed"
+                    name="voice_settings.voice_speed"
                     control={control}
                     render={({ field }) => (
                       <input
@@ -493,7 +594,9 @@ export default function NewAgentConfigPage() {
                     render={({ field }) => (
                       <input
                         type="checkbox"
-                        {...field}
+                        name={field.name}
+                        onChange={field.onChange}
+                        onBlur={field.onBlur}
                         checked={field.value}
                         className="w-4 h-4 text-blue-600 rounded"
                       />
@@ -501,7 +604,7 @@ export default function NewAgentConfigPage() {
                   />
                   <div>
                     <label className="text-sm font-medium">Enable Backchanneling</label>
-                    <p className="text-xs text-gray-500">Agent says "mm-hmm", "right", etc. while listening</p>
+                    <p className="text-xs text-gray-500">Agent says &quot;mm-hmm&quot;, &quot;right&quot;, etc. while listening</p>
                   </div>
                 </div>
 
@@ -512,7 +615,9 @@ export default function NewAgentConfigPage() {
                     render={({ field }) => (
                       <input
                         type="checkbox"
-                        {...field}
+                        name={field.name}
+                        onChange={field.onChange}
+                        onBlur={field.onBlur}
                         checked={field.value}
                         className="w-4 h-4 text-blue-600 rounded"
                       />
@@ -520,7 +625,95 @@ export default function NewAgentConfigPage() {
                   />
                   <div>
                     <label className="text-sm font-medium">Use Filler Words</label>
-                    <p className="text-xs text-gray-500">Agent uses "um", "uh", etc. for natural speech</p>
+                    <p className="text-xs text-gray-500">Agent uses &quot;um&quot;, &quot;uh&quot;, etc. for natural speech</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-medium mb-2">
+                    Voice Temperature: {watch('voice_settings.voice_temperature') || 0.7}
+                  </label>
+                  <Controller
+                    name="voice_settings.voice_temperature"
+                    control={control}
+                    render={({ field }) => (
+                      <input
+                        type="range"
+                        min="0"
+                        max="2"
+                        step="0.1"
+                        value={field.value || 0.7}
+                        onChange={(e) => field.onChange(parseFloat(e.target.value))}
+                        className="w-full"
+                      />
+                    )}
+                  />
+                  <div className="flex justify-between text-xs text-gray-500 mt-1">
+                    <span>Conservative</span>
+                    <span>Creative</span>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2">
+                    Responsiveness: {watch('voice_settings.responsiveness') || 1.0}x
+                  </label>
+                  <Controller
+                    name="voice_settings.responsiveness"
+                    control={control}
+                    render={({ field }) => (
+                      <input
+                        type="range"
+                        min="0"
+                        max="2"
+                        step="0.1"
+                        value={field.value || 1.0}
+                        onChange={(e) => field.onChange(parseFloat(e.target.value))}
+                        className="w-full"
+                      />
+                    )}
+                  />
+                  <div className="flex justify-between text-xs text-gray-500 mt-1">
+                    <span>Slow</span>
+                    <span>Fast</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <h4 className="font-medium mb-2">Conversation Flow Settings</h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                  <div>
+                    <label className="block font-medium mb-1">Max Turns</label>
+                    <Input
+                      type="number"
+                      {...register('conversation_flow.max_turns', { valueAsNumber: true })}
+                      min="5"
+                      max="50"
+                      className="w-full"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-medium mb-1">Timeout (seconds)</label>
+                    <Input
+                      type="number"
+                      {...register('conversation_flow.timeout_seconds', { valueAsNumber: true })}
+                      min="30"
+                      max="300"
+                      className="w-full"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-medium mb-1">Retry Attempts</label>
+                    <Input
+                      type="number"
+                      {...register('conversation_flow.retry_attempts', { valueAsNumber: true })}
+                      min="1"
+                      max="5"
+                      className="w-full"
+                    />
                   </div>
                 </div>
               </div>
@@ -585,7 +778,7 @@ export default function NewAgentConfigPage() {
               </div>
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
-                  <strong>Speed:</strong> {watch('voice_settings.speed')}x
+                  <strong>Speed:</strong> {watch('voice_settings.voice_speed')}x
                 </div>
                 <div>
                   <strong>Backchanneling:</strong> {watch('voice_settings.backchanneling') ? 'Enabled' : 'Disabled'}

@@ -103,8 +103,39 @@ export const useAuthStore = create<AuthState>()(
       initializeAuth: () => {
         const { token } = get()
         if (token) {
-          api.setToken(token)
-          set({ isAuthenticated: true, isLoading: false })
+          // Check if token is expired before using it
+          try {
+            const parts = token.split('.')
+            if (parts.length !== 3) {
+              throw new Error('Invalid token format')
+            }
+            
+            const payload = JSON.parse(atob(parts[1]))
+            const isExpired = payload.exp * 1000 < Date.now()
+            
+            if (isExpired) {
+              console.log('Token expired, clearing auth state')
+              set({ 
+                user: null,
+                token: null,
+                isAuthenticated: false,
+                isLoading: false 
+              })
+              api.clearToken()
+            } else {
+              api.setToken(token)
+              set({ isAuthenticated: true, isLoading: false })
+            }
+          } catch (error) {
+            console.error('Error parsing token:', error)
+            set({ 
+              user: null,
+              token: null,
+              isAuthenticated: false,
+              isLoading: false 
+            })
+            api.clearToken()
+          }
         } else {
           set({ isLoading: false })
         }

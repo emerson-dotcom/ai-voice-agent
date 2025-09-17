@@ -5,11 +5,11 @@ import { useSocketEvent } from '@/hooks/use-socket'
 import { Badge } from '@/components/ui/badge'
 import { Bell, Phone, AlertTriangle } from 'lucide-react'
 import { useState } from 'react'
-import type { EmergencyAlert } from '@/types'
+import type { EmergencyAlert, Call } from '@/types'
 import toast from 'react-hot-toast'
 
 export function Header() {
-  const { data: activeCalls = [] } = useActiveCalls()
+  const { data: activeCalls = [] } = useActiveCalls() as { data: Call[] }
   const [emergencyAlerts, setEmergencyAlerts] = useState<EmergencyAlert[]>([])
 
   // Listen for emergency alerts

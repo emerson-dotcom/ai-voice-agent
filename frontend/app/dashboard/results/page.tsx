@@ -7,33 +7,33 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { useCallHistory, useCallAnalytics } from '@/hooks/use-calls'
+import type { CallList, CallAnalytics } from '@/types'
 import { formatDistanceToNow, format } from 'date-fns'
 import { 
   BarChart3, 
   Search, 
-  Filter,
   Download,
   Eye,
   CheckCircle,
-  XCircle,
   AlertTriangle,
   Clock,
   TrendingUp,
   TrendingDown,
   Phone,
-  Users,
   Target,
   Activity
 } from 'lucide-react'
 
 export default function ResultsAnalyticsPage() {
-  const { data: callHistory = [], isLoading: historyLoading } = useCallHistory()
-  const { data: analytics, isLoading: analyticsLoading } = useCallAnalytics(30) // Last 30 days
+  const { data: callHistoryData, isLoading: historyLoading } = useCallHistory() as { data: CallList | undefined, isLoading: boolean }
+  const { data: analytics, isLoading: analyticsLoading } = useCallAnalytics(30) as { data: CallAnalytics | undefined, isLoading: boolean } // Last 30 days
   
   const [searchTerm, setSearchTerm] = useState('')
   const [outcomeFilter, setOutcomeFilter] = useState<string>('all')
   const [dateRange, setDateRange] = useState<string>('7') // days
 
+  const callHistory = callHistoryData?.calls || []
+  
   const filteredCalls = callHistory.filter(call => {
     const matchesSearch = !searchTerm || 
       call.driver_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -60,7 +60,7 @@ export default function ResultsAnalyticsPage() {
     }
   }
 
-  const getDataQualityScore = (extractedData: any) => {
+  const getDataQualityScore = (extractedData: Record<string, unknown> | null | undefined) => {
     if (!extractedData) return 0
     
     const fields = Object.values(extractedData).filter(value => 
@@ -146,7 +146,7 @@ export default function ResultsAnalyticsPage() {
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-600">Avg Data Quality</p>
                 <p className="text-2xl font-bold text-gray-900">
-                  {analytics?.avg_data_quality ? `${Math.round(analytics.avg_data_quality)}%` : '0%'}
+                  {analytics?.success_rate ? `${Math.round(analytics.success_rate)}%` : '0%'}
                 </p>
               </div>
             </div>
@@ -160,7 +160,7 @@ export default function ResultsAnalyticsPage() {
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-600">Avg Duration</p>
                 <p className="text-2xl font-bold text-gray-900">
-                  {analytics?.avg_duration ? `${Math.round(analytics.avg_duration / 60)}m` : '0m'}
+                  {analytics?.average_duration_seconds ? `${Math.round(analytics.average_duration_seconds / 60)}m` : '0m'}
                 </p>
               </div>
             </div>
@@ -177,7 +177,7 @@ export default function ResultsAnalyticsPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {analytics?.outcome_distribution && Object.entries(analytics.outcome_distribution).map(([outcome, count]) => (
+              {analytics?.call_outcomes && Object.entries(analytics.call_outcomes).map(([outcome, count]) => (
                 <div key={outcome} className="flex items-center justify-between">
                   <div className="flex items-center space-x-3">
                     {getOutcomeBadge(outcome)}
@@ -212,7 +212,7 @@ export default function ResultsAnalyticsPage() {
                   </div>
                 </div>
                 <div className="text-lg font-semibold text-green-700">
-                  {filteredCalls.filter(call => getDataQualityScore(call.structured_data) >= 90).length}
+                  {filteredCalls.filter(call => getDataQualityScore(call.conversation_metadata) >= 90).length}
                 </div>
               </div>
 
@@ -226,7 +226,7 @@ export default function ResultsAnalyticsPage() {
                 </div>
                 <div className="text-lg font-semibold text-yellow-700">
                   {filteredCalls.filter(call => {
-                    const score = getDataQualityScore(call.structured_data)
+                    const score = getDataQualityScore(call.conversation_metadata)
                     return score >= 70 && score < 90
                   }).length}
                 </div>
@@ -241,7 +241,7 @@ export default function ResultsAnalyticsPage() {
                   </div>
                 </div>
                 <div className="text-lg font-semibold text-red-700">
-                  {filteredCalls.filter(call => getDataQualityScore(call.structured_data) < 70).length}
+                  {filteredCalls.filter(call => getDataQualityScore(call.conversation_metadata) < 70).length}
                 </div>
               </div>
             </div>
@@ -341,7 +341,7 @@ export default function ResultsAnalyticsPage() {
                     </div>
                     <div className="flex items-center space-x-3">
                       {call.call_outcome && getOutcomeBadge(call.call_outcome)}
-                      {getQualityBadge(getDataQualityScore(call.structured_data))}
+                      {getQualityBadge(getDataQualityScore(call.conversation_metadata))}
                       <Button variant="outline" size="sm" asChild>
                         <Link href={`/dashboard/results/${call.id}`}>
                           <Eye className="h-4 w-4 mr-1" />
@@ -352,9 +352,9 @@ export default function ResultsAnalyticsPage() {
                   </div>
 
                   {/* Key Extracted Data Preview */}
-                  {call.structured_data && (
+                  {call.conversation_metadata && (
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                      {Object.entries(call.structured_data).slice(0, 4).map(([key, value]) => (
+                      {Object.entries(call.conversation_metadata).slice(0, 4).map(([key, value]) => (
                         <div key={key} className="bg-gray-50 p-3 rounded">
                           <div className="font-medium text-gray-700 capitalize">
                             {key.replace(/_/g, ' ')}
@@ -373,7 +373,7 @@ export default function ResultsAnalyticsPage() {
                   <div className="flex items-center justify-between mt-4 pt-4 border-t text-sm text-gray-600">
                     <div className="flex items-center space-x-6">
                       <span>Duration: {call.duration ? `${Math.floor(call.duration / 60)}:${(call.duration % 60).toString().padStart(2, '0')}` : 'N/A'}</span>
-                      <span>Agent: {call.agent_config?.name || 'Unknown'}</span>
+                      <span>Agent Config ID: {call.agent_config_id}</span>
                     </div>
                     <div>
                       {formatDistanceToNow(new Date(call.created_at))} ago

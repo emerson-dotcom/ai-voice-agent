@@ -16,8 +16,7 @@ import {
   Pause, 
   Eye,
   AlertTriangle,
-  CheckCircle,
-  Clock
+  CheckCircle
 } from 'lucide-react'
 
 export default function AgentConfigurationPage() {
@@ -42,7 +41,7 @@ export default function AgentConfigurationPage() {
     await deployAgent.mutateAsync({ id, deploy: shouldDeploy })
   }
 
-  const getStatusBadge = (config: any) => {
+  const getStatusBadge = (config: { is_deployed: boolean; is_active: boolean }) => {
     if (config.is_deployed && config.is_active) {
       return <Badge className="bg-green-100 text-green-800">Active</Badge>
     } else if (config.is_active) {
@@ -167,7 +166,7 @@ export default function AgentConfigurationPage() {
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
                     <span className="text-gray-600">Voice Speed:</span>
-                    <span>{config.voice_settings?.speed || 1}x</span>
+                    <span>{config.voice_settings?.voice_speed || 1}x</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-600">Backchanneling:</span>

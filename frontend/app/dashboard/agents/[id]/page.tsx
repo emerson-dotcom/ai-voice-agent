@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { useAgentConfig, useDeleteAgentConfig, useDeployAgentConfig, useTestAgentConfig } from '@/hooks/use-agents'
+import type { AgentConfiguration } from '@/types'
 import { formatDistanceToNow, format } from 'date-fns'
 import { 
   ArrowLeft,
@@ -22,7 +23,6 @@ import {
   CheckCircle,
   AlertTriangle,
   Clock,
-  User,
   Activity
 } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -32,7 +32,7 @@ export default function AgentConfigDetailPage() {
   const router = useRouter()
   const id = params?.id as string
   
-  const { data: config, isLoading } = useAgentConfig(parseInt(id))
+  const { data: config, isLoading } = useAgentConfig(parseInt(id)) as { data: AgentConfiguration | undefined, isLoading: boolean }
   const deleteAgent = useDeleteAgentConfig()
   const deployAgent = useDeployAgentConfig()
   const testAgent = useTestAgentConfig()
@@ -46,7 +46,7 @@ export default function AgentConfigDetailPage() {
         await deleteAgent.mutateAsync(parseInt(id))
         toast.success('Agent configuration deleted successfully')
         router.push('/dashboard/agents')
-      } catch (error) {
+      } catch {
         toast.error('Failed to delete agent configuration')
       }
     }
@@ -56,22 +56,24 @@ export default function AgentConfigDetailPage() {
     try {
       await deployAgent.mutateAsync({ id: parseInt(id), deploy: shouldDeploy })
       toast.success(`Agent ${shouldDeploy ? 'deployed' : 'paused'} successfully`)
-    } catch (error) {
+    } catch {
       toast.error(`Failed to ${shouldDeploy ? 'deploy' : 'pause'} agent`)
     }
   }
 
   const handleTest = async () => {
     try {
-      await testAgent.mutateAsync(parseInt(id))
+      // Use a default test phone number for testing
+      const testPhone = '+15551234567'
+      await testAgent.mutateAsync({ id: parseInt(id), testPhone })
       toast.success('Test call initiated successfully')
-    } catch (error) {
+    } catch {
       toast.error('Failed to initiate test call')
     }
   }
 
   const handleDuplicate = () => {
-    router.push(`/dashboard/agents/new?template=${config?.scenario_type}&duplicate=${id}`)
+    router.push(`/dashboard/agents/new?duplicate=${id}`)
   }
 
   const getStatusBadge = () => {
@@ -325,10 +327,10 @@ export default function AgentConfigDetailPage() {
                   <div className="flex-1 bg-gray-200 rounded-full h-2">
                     <div 
                       className="bg-blue-500 h-2 rounded-full" 
-                      style={{ width: `${((config.voice_settings?.speed || 1) - 0.5) / 1.5 * 100}%` }}
+                      style={{ width: `${((config.voice_settings?.voice_speed || 1) - 0.5) / 1.5 * 100}%` }}
                     ></div>
                   </div>
-                  <span className="text-sm font-mono">{config.voice_settings?.speed || 1}x</span>
+                  <span className="text-sm font-mono">{config.voice_settings?.voice_speed || 1}x</span>
                 </div>
               </div>
               
@@ -368,7 +370,7 @@ export default function AgentConfigDetailPage() {
       </Card>
 
       {/* Data Extraction Points */}
-      {config.data_extraction_points && config.data_extraction_points.length > 0 && (
+      {config.conversation_flow?.data_extraction_points && config.conversation_flow.data_extraction_points.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle>Data Extraction Points</CardTitle>
@@ -378,7 +380,7 @@ export default function AgentConfigDetailPage() {
           </CardHeader>
           <CardContent>
             <div className="flex flex-wrap gap-2">
-              {config.data_extraction_points.map((point, index) => (
+              {config.conversation_flow.data_extraction_points.map((point, index) => (
                 <Badge key={index} variant="outline" className="capitalize">
                   {point.replace(/_/g, ' ')}
                 </Badge>
@@ -388,37 +390,7 @@ export default function AgentConfigDetailPage() {
         </Card>
       )}
 
-      {/* Usage Statistics (if available) */}
-      {config.usage_stats && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Usage Statistics</CardTitle>
-            <CardDescription>
-              Performance metrics for this configuration
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div>
-                <h4 className="font-medium text-gray-700 mb-1">Total Calls</h4>
-                <p className="text-2xl font-bold text-gray-900">{config.usage_stats.total_calls || 0}</p>
-              </div>
-              <div>
-                <h4 className="font-medium text-gray-700 mb-1">Success Rate</h4>
-                <p className="text-2xl font-bold text-gray-900">
-                  {config.usage_stats.success_rate ? `${Math.round(config.usage_stats.success_rate)}%` : '0%'}
-                </p>
-              </div>
-              <div>
-                <h4 className="font-medium text-gray-700 mb-1">Avg Duration</h4>
-                <p className="text-2xl font-bold text-gray-900">
-                  {config.usage_stats.avg_duration ? `${Math.round(config.usage_stats.avg_duration / 60)}m` : '0m'}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      {/* Usage Statistics section removed - not implemented in backend */}
     </div>
   )
 }

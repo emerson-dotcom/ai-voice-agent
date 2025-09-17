@@ -9,14 +9,14 @@ export function useAgentConfigs(filters?: {
   scenario_type?: string
   is_active?: boolean
 }) {
-  return useQuery({
+  return useQuery<AgentConfigList>({
     queryKey: ['agents', filters],
     queryFn: () => api.getAgentConfigs(filters),
   })
 }
 
 export function useAgentConfig(id: number) {
-  return useQuery({
+  return useQuery<AgentConfiguration>({
     queryKey: ['agents', id],
     queryFn: () => api.getAgentConfig(id),
     enabled: !!id,
@@ -82,9 +82,11 @@ export function useDeployAgentConfig() {
   const queryClient = useQueryClient()
   
   return useMutation({
-    mutationFn: (id: number) => api.deployAgentConfig(id),
+    mutationFn: ({ id, deploy }: { id: number; deploy: boolean }) => 
+      api.deployAgentConfig(id, deploy),
     onSuccess: (data) => {
-      toast.success(`Agent configuration "${data.name}" deployed successfully`)
+      const action = data.is_deployed ? 'deployed' : 'paused'
+      toast.success(`Agent configuration "${data.name}" ${action} successfully`)
       
       // Update the specific agent in cache
       queryClient.setQueryData(['agents', data.id], data)
@@ -93,7 +95,7 @@ export function useDeployAgentConfig() {
       queryClient.invalidateQueries({ queryKey: ['agents'] })
     },
     onError: (error: Error) => {
-      toast.error(`Failed to deploy agent configuration: ${error.message}`)
+      toast.error(`Failed to update agent configuration: ${error.message}`)
     },
   })
 }

@@ -11,7 +11,7 @@ export function useCalls(filters?: {
   driver_name?: string
   load_number?: string
 }) {
-  return useQuery({
+  return useQuery<CallList>({
     queryKey: ['calls', filters],
     queryFn: () => api.getCalls(filters),
     refetchInterval: 30000, // Refetch every 30 seconds
@@ -21,7 +21,7 @@ export function useCalls(filters?: {
 export function useActiveCalls() {
   const queryClient = useQueryClient()
   
-  const query = useQuery({
+  const query = useQuery<Call[]>({
     queryKey: ['calls', 'active'],
     queryFn: () => api.getActiveCalls(),
     refetchInterval: 10000, // Refetch every 10 seconds for active calls
@@ -72,6 +72,7 @@ export function useInitiateCall() {
       phone_number: string
       load_number: string
       agent_config_id: number
+      call_type?: string
     }) => api.initializeCall(data),
     onSuccess: (data) => {
       toast.success(`Call initiated successfully for ${data.driver_name}`)
@@ -125,6 +126,22 @@ export function useRetryCall() {
     onError: (error: Error) => {
       toast.error(`Failed to retry call: ${error.message}`)
     },
+  })
+}
+
+export function useCallHistory(filters?: {
+  page?: number
+  per_page?: number
+  status_filter?: string
+  driver_name?: string
+  load_number?: string
+  date_from?: string
+  date_to?: string
+}) {
+  return useQuery<CallList>({
+    queryKey: ['calls', 'history', filters],
+    queryFn: () => api.getCalls(filters),
+    staleTime: 2 * 60 * 1000, // Consider data stale after 2 minutes
   })
 }
 
