@@ -44,7 +44,7 @@ class CallService:
         # Create call record
         call_record = CallRecord(
             driver_name=call_request.driver_name,
-            phone_number=call_request.phone_number,
+            phone_number=call_request.phone_number or "",  # Handle None phone number for web calls
             load_number=call_request.load_number,
             agent_config_id=call_request.agent_config_id,
             status=CallStatus.INITIATED,
@@ -92,7 +92,9 @@ class CallService:
                         if not call_record.conversation_metadata:
                             call_record.conversation_metadata = {}
                         call_record.conversation_metadata['access_token'] = retell_response.access_token
-                        call_record.conversation_metadata['web_call_url'] = f"https://frontend.retellai.com/call/{retell_response.access_token}"
+                        # Retell webcalls use a custom frontend implementation
+                        # The URL should point to your own webcall page with the access token
+                        call_record.conversation_metadata['web_call_url'] = f"http://localhost:3000/webcall/{retell_response.access_token}"
                         
                         print(f"🌐 Web call created: {call_record.retell_call_id}")
                         print(f"🔗 Web Call URL: {call_record.conversation_metadata['web_call_url']}")
@@ -101,7 +103,10 @@ class CallService:
                         # Create phone call
                         # Remove + prefix from phone numbers for Retell API
                         from_number = settings.RETELL_PHONE_NUMBER.lstrip('+')
-                        to_number = call_request.phone_number.lstrip('+')
+                        to_number = (call_request.phone_number or "").lstrip('+')
+                        
+                        if not to_number:
+                            raise ValueError("Phone number is required for phone calls")
                         
                         retell_response = self.retell_client.call.create_phone_call(
                             from_number=from_number,

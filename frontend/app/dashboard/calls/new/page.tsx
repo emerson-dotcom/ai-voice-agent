@@ -29,12 +29,30 @@ import type { AgentConfiguration, Call } from '@/types'
 // Validation schema for new call
 const newCallSchema = z.object({
   driver_name: z.string().min(1, 'Driver name is required').max(100),
-  phone_number: z.string()
-    .min(10, 'Phone number must be at least 10 digits')
-    .regex(/^\+?[\d\s\-\(\)]+$/, 'Invalid phone number format'),
+  phone_number: z.string().optional(),
   load_number: z.string().min(1, 'Load number is required').max(50),
   agent_config_id: z.number().min(1, 'Please select an agent configuration'),
+  call_type: z.enum(['phone_call', 'web_call']),
   notes: z.string().optional(),
+}).refine((data) => {
+  // Phone number is required for phone calls
+  if (data.call_type === 'phone_call') {
+    return data.phone_number && data.phone_number.length >= 10
+  }
+  return true
+}, {
+  message: "Phone number is required for phone calls and must be at least 10 digits",
+  path: ["phone_number"]
+}).refine((data) => {
+  // Validate phone number format if provided
+  if (data.phone_number && data.phone_number.length > 0) {
+    const phoneRegex = /^\+?[\d\s\-\(\)]+$/
+    return phoneRegex.test(data.phone_number)
+  }
+  return true
+}, {
+  message: "Invalid phone number format",
+  path: ["phone_number"]
 })
 
 type NewCallFormData = z.infer<typeof newCallSchema>
@@ -46,6 +64,7 @@ export default function NewCallPage() {
   
   const [selectedAgent, setSelectedAgent] = useState<AgentConfiguration | null>(null)
   const [isPreviewMode, setIsPreviewMode] = useState(false)
+  const [callType, setCallType] = useState<'phone_call' | 'web_call'>('phone_call')
 
   const {
     register,
@@ -60,6 +79,7 @@ export default function NewCallPage() {
       phone_number: '',
       load_number: '',
       agent_config_id: 0,
+      call_type: 'phone_call',
       notes: '',
     },
   })
@@ -80,9 +100,30 @@ export default function NewCallPage() {
         phone_number: data.phone_number,
         load_number: data.load_number,
         agent_config_id: data.agent_config_id,
+        call_type: data.call_type,
       }) as Call
       
-      toast.success(`Call initiated successfully for ${data.driver_name}`)
+      toast.success(`${data.call_type === 'web_call' ? 'Web call' : 'Call'} initiated successfully for ${data.driver_name}`)
+      
+      // If it's a web call, automatically open the webcall URL
+      if (data.call_type === 'web_call' && result.conversation_metadata?.web_call_url) {
+        // Extract the token from the web_call_url
+        const webCallUrl = result.conversation_metadata.web_call_url
+        const tokenMatch = webCallUrl.match(/\/webcall\/([^\/]+)/)
+        
+        if (tokenMatch && tokenMatch[1]) {
+          const token = tokenMatch[1]
+          // Open the webcall in a new tab
+          window.open(`/webcall/${token}`, '_blank')
+          toast.success('Web call opened in new tab!')
+        } else {
+          // Fallback: open the full URL
+          window.open(webCallUrl, '_blank')
+          toast.success('Web call opened in new tab!')
+        }
+      }
+      
+      // Navigate to call details page
       router.push(`/dashboard/calls/${result.id}`)
     } catch (error) {
       toast.error('Failed to initiate call')
@@ -173,7 +214,9 @@ export default function NewCallPage() {
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium mb-2">Phone Number *</label>
+                      <label className="block text-sm font-medium mb-2">
+                        Phone Number {watch('call_type') === 'phone_call' ? '*' : '(Optional for web calls)'}
+                      </label>
                       <Controller
                         name="phone_number"
                         control={control}
@@ -186,13 +229,77 @@ export default function NewCallPage() {
                               field.onChange(formatted)
                             }}
                             className={errors.phone_number ? 'border-red-500' : ''}
+                            disabled={watch('call_type') === 'web_call'}
                           />
                         )}
                       />
                       {errors.phone_number && (
                         <p className="text-sm text-red-600 mt-1">{errors.phone_number.message}</p>
                       )}
+                      {watch('call_type') === 'web_call' && (
+                        <p className="text-sm text-gray-500 mt-1">
+                          Phone number is optional for web calls - a web link will be generated instead
+                        </p>
+                      )}
                     </div>
+                  </div>
+
+                  {/* Call Type Selection */}
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Call Type *</label>
+                    <Controller
+                      name="call_type"
+                      control={control}
+                      render={({ field }) => (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div
+                            className={`p-4 border rounded-lg cursor-pointer transition-all ${
+                              field.value === 'phone_call'
+                                ? 'border-blue-500 bg-blue-50'
+                                : 'border-gray-200 hover:border-gray-300'
+                            }`}
+                            onClick={() => field.onChange('phone_call')}
+                          >
+                            <div className="flex items-center space-x-3">
+                              <input
+                                type="radio"
+                                checked={field.value === 'phone_call'}
+                                onChange={() => field.onChange('phone_call')}
+                                className="text-blue-600"
+                              />
+                              <div>
+                                <h4 className="font-medium text-gray-900">Phone Call</h4>
+                                <p className="text-sm text-gray-600">Call the driver directly via phone</p>
+                              </div>
+                            </div>
+                          </div>
+                          <div
+                            className={`p-4 border rounded-lg cursor-pointer transition-all ${
+                              field.value === 'web_call'
+                                ? 'border-blue-500 bg-blue-50'
+                                : 'border-gray-200 hover:border-gray-300'
+                            }`}
+                            onClick={() => field.onChange('web_call')}
+                          >
+                            <div className="flex items-center space-x-3">
+                              <input
+                                type="radio"
+                                checked={field.value === 'web_call'}
+                                onChange={() => field.onChange('web_call')}
+                                className="text-blue-600"
+                              />
+                              <div>
+                                <h4 className="font-medium text-gray-900">Web Call</h4>
+                                <p className="text-sm text-gray-600">Generate a web call link for the driver</p>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    />
+                    {errors.call_type && (
+                      <p className="text-sm text-red-600 mt-1">{errors.call_type.message}</p>
+                    )}
                   </div>
 
                   <div>

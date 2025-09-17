@@ -165,10 +165,10 @@ class ApiClient {
   // Call management endpoints
   async initializeCall(data: {
     driver_name: string
-    phone_number: string
+    phone_number?: string
     load_number: string
     agent_config_id: number
-    call_type?: string
+    call_type?: 'phone_call' | 'web_call'
   }) {
     return this.post<import('@/types').Call>('/api/v1/calls/initiate', data)
   }

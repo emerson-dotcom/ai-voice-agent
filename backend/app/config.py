@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     RETELL_API_KEY: str
     RETELL_BASE_URL: str = "https://api.retellai.com/v2"
     RETELL_WEBHOOK_SECRET: str
-    RETELL_MOCK_MODE: bool = True  # Set to False to use real Retell API
+    RETELL_MOCK_MODE: bool = False  # Set to False to use real Retell API
     
     @field_validator('RETELL_MOCK_MODE')
     @classmethod

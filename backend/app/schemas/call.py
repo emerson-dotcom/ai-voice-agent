@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, validator, model_validator
 from datetime import datetime
 from typing import Optional, Dict, Any, List
 from enum import Enum
@@ -62,37 +62,52 @@ class EmergencyData(BaseModel):
 
 class CallInitiateRequest(BaseModel):
     driver_name: str = Field(min_length=2, max_length=100)
-    phone_number: str = Field(min_length=10, max_length=20)
+    phone_number: Optional[str] = Field(None, max_length=20)
     load_number: str = Field(min_length=3, max_length=50)
     agent_config_id: int = Field(gt=0)
     call_type: CallType = Field(default=CallType.PHONE_CALL, description="Type of call: web_call or phone_call")
     
-    @validator('phone_number')
-    def validate_phone_number(cls, v):
-        if not v:
-            raise ValueError('Phone number is required')
+    @model_validator(mode='after')
+    def validate_phone_number(self):
+        phone_number = self.phone_number
+        call_type = self.call_type
         
-        # If already in E.164 format, validate and return as-is
-        if v.startswith('+'):
-            digits_only = re.sub(r'\D', '', v)
-            if len(digits_only) < 10 or len(digits_only) > 15:
-                raise ValueError('Phone number must be between 10-15 digits')
-            return v
-        
-        # Remove all non-digit characters for non-E.164 numbers
-        digits_only = re.sub(r'\D', '', v)
-        
-        # Check if it's a valid phone number (10-15 digits)
-        if len(digits_only) < 10 or len(digits_only) > 15:
-            raise ValueError('Phone number must be between 10-15 digits')
-        
-        # Format as E.164 if it's a US number (starts with 1 and has 11 digits)
-        if len(digits_only) == 11 and digits_only.startswith('1'):
-            return f"+{digits_only}"
-        elif len(digits_only) == 10:
-            return f"+1{digits_only}"
+        # If call_type is web_call, phone_number is optional
+        if call_type == CallType.WEB_CALL:
+            # For web calls, phone number is optional
+            if not phone_number or phone_number.strip() == "":
+                self.phone_number = None
+                return self
         else:
-            return f"+{digits_only}"
+            # For phone calls, phone number is required
+            if not phone_number or phone_number.strip() == "":
+                raise ValueError('Phone number is required for phone calls')
+        
+        # If phone number is provided, validate it
+        if phone_number and phone_number.strip():
+            # If already in E.164 format, validate and return as-is
+            if phone_number.startswith('+'):
+                digits_only = re.sub(r'\D', '', phone_number)
+                if len(digits_only) < 10 or len(digits_only) > 15:
+                    raise ValueError('Phone number must be between 10-15 digits')
+                self.phone_number = phone_number
+            else:
+                # Remove all non-digit characters for non-E.164 numbers
+                digits_only = re.sub(r'\D', '', phone_number)
+                
+                # Check if it's a valid phone number (10-15 digits)
+                if len(digits_only) < 10 or len(digits_only) > 15:
+                    raise ValueError('Phone number must be between 10-15 digits')
+                
+                # Format as E.164 if it's a US number (starts with 1 and has 11 digits)
+                if len(digits_only) == 11 and digits_only.startswith('1'):
+                    self.phone_number = f"+{digits_only}"
+                elif len(digits_only) == 10:
+                    self.phone_number = f"+1{digits_only}"
+                else:
+                    self.phone_number = f"+{digits_only}"
+        
+        return self
 
 
 class CallResponse(BaseModel):

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -36,6 +36,20 @@ export default function CallDetailPage() {
   
   const [showTranscript, setShowTranscript] = useState(true)
   const [showStructuredData, setShowStructuredData] = useState(true)
+  const [hasAutoOpened, setHasAutoOpened] = useState(false)
+
+  // Auto-open webcall if it's a web call in progress
+  useEffect(() => {
+    if (call && call.web_call_url && call.status === 'in_progress' && !hasAutoOpened) {
+      // Extract token from web_call_url
+      const tokenMatch = call.web_call_url.match(/\/webcall\/([^\/]+)/)
+      if (tokenMatch && tokenMatch[1]) {
+        const token = tokenMatch[1]
+        window.open(`/webcall/${token}`, '_blank')
+        setHasAutoOpened(true)
+      }
+    }
+  }, [call, hasAutoOpened])
 
   const handleCancelCall = async () => {
     if (call?.status === 'in_progress' && confirm('Are you sure you want to cancel this call?')) {

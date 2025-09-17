@@ -69,10 +69,10 @@ export function useInitiateCall() {
   return useMutation({
     mutationFn: (data: {
       driver_name: string
-      phone_number: string
+      phone_number?: string
       load_number: string
       agent_config_id: number
-      call_type?: string
+      call_type?: 'phone_call' | 'web_call'
     }) => api.initializeCall(data),
     onSuccess: (data) => {
       toast.success(`Call initiated successfully for ${data.driver_name}`)

@@ -11,7 +11,15 @@
   "dependencies": {
     "react": "19.1.0",
     "react-dom": "19.1.0",
-    "next": "15.5.3"
+    "next": "15.5.3",
+    "retell-client-js-sdk": "^1.0.0",
+    "@tanstack/react-query": "^5.0.0",
+    "react-hook-form": "^7.0.0",
+    "@hookform/resolvers": "^3.0.0",
+    "zod": "^3.0.0",
+    "react-hot-toast": "^2.0.0",
+    "lucide-react": "^0.400.0",
+    "date-fns": "^3.0.0"
   },
   "devDependencies": {
     "typescript": "^5",
