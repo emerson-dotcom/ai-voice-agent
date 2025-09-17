@@ -16,6 +16,15 @@ export default function LoginPage() {
   const { login, isLoading, isAuthenticated } = useAuth()
   const [error, setError] = useState<string>('')
 
+  // Always call useForm hook (Rules of Hooks)
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<LoginFormData>({
+    resolver: zodResolver(loginSchema),
+  })
+
   // Redirect to dashboard if already authenticated
   useEffect(() => {
     if (!isLoading && isAuthenticated) {
@@ -39,14 +48,6 @@ export default function LoginPage() {
   if (isAuthenticated) {
     return null
   }
-
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-  } = useForm<LoginFormData>({
-    resolver: zodResolver(loginSchema),
-  })
 
   const onSubmit = async (data: LoginFormData) => {
     try {

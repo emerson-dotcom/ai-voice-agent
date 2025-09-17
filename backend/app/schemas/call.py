@@ -12,6 +12,10 @@ class CallStatus(str, Enum):
     FAILED = "failed"
     CANCELLED = "cancelled"
 
+class CallType(str, Enum):
+    WEB_CALL = "web_call"
+    PHONE_CALL = "phone_call"
+
 
 class CallOutcome(str, Enum):
     IN_TRANSIT_UPDATE = "In-Transit Update"
@@ -61,10 +65,21 @@ class CallInitiateRequest(BaseModel):
     phone_number: str = Field(min_length=10, max_length=20)
     load_number: str = Field(min_length=3, max_length=50)
     agent_config_id: int = Field(gt=0)
+    call_type: CallType = Field(default=CallType.PHONE_CALL, description="Type of call: web_call or phone_call")
     
     @validator('phone_number')
     def validate_phone_number(cls, v):
-        # Remove all non-digit characters
+        if not v:
+            raise ValueError('Phone number is required')
+        
+        # If already in E.164 format, validate and return as-is
+        if v.startswith('+'):
+            digits_only = re.sub(r'\D', '', v)
+            if len(digits_only) < 10 or len(digits_only) > 15:
+                raise ValueError('Phone number must be between 10-15 digits')
+            return v
+        
+        # Remove all non-digit characters for non-E.164 numbers
         digits_only = re.sub(r'\D', '', v)
         
         # Check if it's a valid phone number (10-15 digits)
@@ -88,15 +103,36 @@ class CallResponse(BaseModel):
     load_number: str
     agent_config_id: int
     status: CallStatus
+    call_type: Optional[CallType] = None
     call_outcome: Optional[CallOutcome] = None
     duration: Optional[int] = None
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
+    raw_transcript: Optional[str] = None
+    structured_data: Optional[Dict[str, Any]] = None
+    conversation_metadata: Optional[Dict[str, Any]] = None
     extraction_confidence: Optional[float] = None
     conversation_quality_score: Optional[float] = None
     error_message: Optional[str] = None
     created_at: datetime
     updated_at: datetime
+    
+    # Add transcript alias for frontend compatibility
+    @property
+    def transcript(self) -> Optional[str]:
+        return self.raw_transcript
+    
+    # Add analysis alias for frontend compatibility  
+    @property
+    def analysis(self) -> Optional[Dict[str, Any]]:
+        return self.structured_data
+    
+    # Add web call URL for easy access
+    @property
+    def web_call_url(self) -> Optional[str]:
+        if self.conversation_metadata:
+            return self.conversation_metadata.get('web_call_url')
+        return None
     
     class Config:
         from_attributes = True

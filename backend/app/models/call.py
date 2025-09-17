@@ -22,6 +22,7 @@ class CallRecord(Base):
     
     # Call status and metadata
     status = Column(String, default="initiated")  # initiated, in_progress, completed, failed, cancelled
+    call_type = Column(String, default="phone_call")  # web_call, phone_call
     call_outcome = Column(String)  # "In-Transit Update", "Arrival Confirmation", "Emergency Escalation"
     
     # Call data

@@ -24,6 +24,7 @@ python-socketio>=5.8.0
 
 # NLP & AI
 openai>=1.0.0
+retell-sdk>=4.46.0
 # spacy>=3.7.0  # Optional - can be installed later if needed
 
 # Utilities

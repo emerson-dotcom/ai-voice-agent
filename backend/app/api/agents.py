@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, func
 from sqlalchemy.orm import selectinload
 from typing import List, Optional
 
@@ -89,6 +89,9 @@ async def delete_agent_config(
     current_user: User = Depends(get_current_user)
 ):
     """Delete agent configuration"""
+    from app.models.call import CallRecord
+    
+    # Check if the agent configuration exists
     result = await db.execute(
         select(AgentConfiguration).where(AgentConfiguration.id == config_id)
     )
@@ -100,19 +103,38 @@ async def delete_agent_config(
             detail="Agent configuration not found"
         )
     
+    # Check if there are any calls associated with this agent
+    call_count_result = await db.execute(
+        select(func.count(CallRecord.id)).where(CallRecord.agent_config_id == config_id)
+    )
+    call_count = call_count_result.scalar()
+    
+    if call_count > 0:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Cannot delete agent configuration: {call_count} call(s) are associated with this agent. Please delete or reassign the calls first."
+        )
+    
+    # Safe to delete the configuration
     await db.delete(config)
     await db.commit()
+    
+    # Return 204 No Content (successful deletion)
 
 
 @router.post("/{config_id}/deploy", response_model=AgentConfigResponse)
 async def deploy_agent_config(
     config_id: int,
+    deploy: bool = Query(True, description="True to deploy, False to pause/undeploy"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Deploy agent configuration to Retell AI"""
+    """Deploy or pause agent configuration"""
     agent_service = AgentService(db)
-    return await agent_service.deploy_configuration(config_id)
+    if deploy:
+        return await agent_service.deploy_configuration(config_id)
+    else:
+        return await agent_service.pause_configuration(config_id)
 
 
 @router.post("/{config_id}/test", response_model=dict)

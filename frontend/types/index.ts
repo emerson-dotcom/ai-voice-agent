@@ -53,6 +53,7 @@ export interface AgentConfiguration {
 
 // Call types
 export type CallStatus = 'initiated' | 'in_progress' | 'completed' | 'failed' | 'cancelled'
+export type CallType = 'web_call' | 'phone_call'
 export type CallOutcome = 'In-Transit Update' | 'Arrival Confirmation' | 'Emergency Escalation'
 export type DriverStatus = 'Driving' | 'Delayed' | 'Arrived' | 'Unloading'
 export type EmergencyType = 'Accident' | 'Breakdown' | 'Medical' | 'Other'
@@ -65,6 +66,7 @@ export interface Call {
   load_number: string
   agent_config_id: number
   status: CallStatus
+  call_type?: CallType
   call_outcome?: CallOutcome
   duration?: number
   start_time?: string
@@ -72,6 +74,7 @@ export interface Call {
   extraction_confidence?: number
   conversation_quality_score?: number
   error_message?: string
+  conversation_metadata?: Record<string, any>
   created_at: string
   updated_at: string
 }
@@ -82,6 +85,7 @@ export interface CallDetail extends Call {
   conversation_metadata?: Record<string, any>
   agent_config_name?: string
   scenario_type?: string
+  web_call_url?: string  // Add web call URL property
 }
 
 // Structured data types

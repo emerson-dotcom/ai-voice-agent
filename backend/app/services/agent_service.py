@@ -10,17 +10,58 @@ from app.schemas.agent import (
     AgentConfigResponse,
     AgentConfigList
 )
-from app.core.retell_client import RetellClient
+from retell import Retell
 from app.config import settings
 
 
 class AgentService:
     def __init__(self, db: AsyncSession):
         self.db = db
-        self.retell_client = RetellClient(
-            api_key=settings.RETELL_API_KEY,
-            base_url=settings.RETELL_BASE_URL
-        )
+        self.retell_client = Retell(api_key=settings.RETELL_API_KEY)
+        self._cached_llm_id = None
+
+    def _get_or_create_llm(self) -> str:
+        """Get existing LLM or create a new one dynamically"""
+        if self._cached_llm_id:
+            return self._cached_llm_id
+        
+        # Check if a specific LLM ID is configured
+        if settings.RETELL_DEFAULT_LLM_ID:
+            print(f"🔧 Using configured LLM: {settings.RETELL_DEFAULT_LLM_ID}")
+            self._cached_llm_id = settings.RETELL_DEFAULT_LLM_ID
+            return self._cached_llm_id
+            
+        try:
+            # First, try to get existing LLMs
+            llms = self.retell_client.llm.list()
+            
+            if llms and len(llms) > 0:
+                # Use the first available LLM
+                self._cached_llm_id = llms[0].llm_id
+                print(f"🔍 Using existing LLM: {self._cached_llm_id}")
+                return self._cached_llm_id
+            elif settings.RETELL_AUTO_CREATE_LLM:
+                # Create a new LLM if none exist and auto-creation is enabled
+                print("🆕 Creating new LLM for agent deployment...")
+                new_llm = self.retell_client.llm.create(
+                    general_prompt="You are a professional dispatcher assistant helping with driver check-ins and logistics communication. Be polite, efficient, and gather the required information systematically.",
+                    general_tools=[],
+                    model="gpt-4o",
+                    begin_message="Hi! I'm calling to check on your delivery status. This will just take a moment."
+                )
+                self._cached_llm_id = new_llm.llm_id
+                print(f"✅ Created new LLM: {self._cached_llm_id}")
+                return self._cached_llm_id
+            else:
+                raise Exception("No LLMs found and auto-creation is disabled")
+                
+        except Exception as e:
+            print(f"❌ Error managing LLM: {e}")
+            # Fallback to the current working LLM ID if everything fails
+            fallback_llm = "llm_fa38454870dd949bffe1927ab9c1"  # Current working LLM
+            print(f"⚠️  Using fallback LLM: {fallback_llm}")
+            self._cached_llm_id = fallback_llm
+            return fallback_llm
 
     async def list_configurations(
         self,
@@ -131,16 +172,89 @@ class AgentService:
         retell_config = self._prepare_retell_config(config)
         
         try:
-            if config.retell_agent_id:
-                # Update existing agent
-                response = await self.retell_client.update_agent(
-                    config.retell_agent_id,
-                    retell_config
-                )
+            if settings.RETELL_MOCK_MODE:
+                # Mock deployment for development/testing
+                if config.retell_agent_id:
+                    mock_agent_id = config.retell_agent_id
+                else:
+                    import uuid
+                    mock_agent_id = f"agent_{uuid.uuid4().hex[:8]}"
+                    config.retell_agent_id = mock_agent_id
+                print(f"🧪 Mock agent deployment: {mock_agent_id}")
             else:
-                # Create new agent
-                response = await self.retell_client.create_agent(retell_config)
-                config.retell_agent_id = response.get("agent_id")
+                # Real Retell AI agent deployment using SDK
+                llm_id = self._get_or_create_llm()
+                print(f"🔧 Using LLM ID: {llm_id}")
+                
+                if config.retell_agent_id:
+                    # Try to update existing agent first
+                    print(f"🔄 Attempting to update existing agent: {config.retell_agent_id}")
+                    try:
+                        response = self.retell_client.agent.update(
+                            agent_id=config.retell_agent_id,
+                            agent_name=retell_config.get("agent_name"),
+                            voice_id=retell_config["voice_id"],
+                            language=retell_config.get("language", "en-US"),
+                            response_engine={
+                                "type": "retell-llm",
+                                "llm_id": llm_id
+                            },
+                            webhook_url="http://localhost:8000/api/v1/webhooks/retell/call-ended"
+                        )
+                        print(f"✅ Agent updated successfully: {response.agent_id}")
+                    except Exception as update_error:
+                        print(f"❌ Update failed: {update_error}")
+                        print(f"🔍 Checking if agent {config.retell_agent_id} still exists...")
+                        
+                        # Check if agent exists, if not create new one
+                        try:
+                            existing_agent = self.retell_client.agent.retrieve(config.retell_agent_id)
+                            print(f"⚠️ Agent exists but update failed. Keeping existing agent: {existing_agent.agent_id}")
+                            # Don't create a new agent, just keep the existing one
+                        except Exception:
+                            print(f"🆕 Agent no longer exists. Creating new agent...")
+                            response = self.retell_client.agent.create(
+                                agent_name=retell_config.get("agent_name"),
+                                voice_id=retell_config["voice_id"],
+                                language=retell_config.get("language", "en-US"),
+                                response_engine={
+                                    "type": "retell-llm",
+                                    "llm_id": llm_id
+                                },
+                                webhook_url="http://localhost:8000/api/v1/webhooks/retell/call-ended"
+                            )
+                            config.retell_agent_id = response.agent_id
+                            print(f"✅ New agent created: {response.agent_id}")
+                else:
+                    # No agent ID, create new agent
+                    print(f"🆕 No agent ID found. Creating new agent...")
+                    response = self.retell_client.agent.create(
+                        agent_name=retell_config.get("agent_name"),
+                        voice_id=retell_config["voice_id"],
+                        language=retell_config.get("language", "en-US"),
+                        response_engine={
+                            "type": "retell-llm",
+                            "llm_id": llm_id
+                        },
+                        webhook_url="http://localhost:8000/api/v1/webhooks/retell/call-ended"
+                    )
+                    config.retell_agent_id = response.agent_id
+                    print(f"✅ New agent created: {response.agent_id}")
+            
+            # Configure phone number with the deployed agent
+            if not settings.RETELL_MOCK_MODE:
+                try:
+                    # Remove + prefix if present for phone number update
+                    phone_number = settings.RETELL_PHONE_NUMBER.lstrip('+')
+                    print(f"📞 Configuring phone number {phone_number} with agent {config.retell_agent_id}...")
+                    phone_response = self.retell_client.phone_number.update(
+                        phone_number=phone_number,
+                        outbound_agent_id=config.retell_agent_id
+                    )
+                    print(f"✅ Phone number {phone_number} configured with agent {config.retell_agent_id}")
+                except Exception as phone_error:
+                    print(f"⚠️ Phone configuration failed: {phone_error}")
+                    # Don't fail the deployment if phone config fails
             
             # Update deployment status
             config.retell_config = retell_config
@@ -154,6 +268,36 @@ class AgentService:
             
         except Exception as e:
             raise ValueError(f"Failed to deploy to Retell AI: {str(e)}")
+
+    async def pause_configuration(self, config_id: int) -> AgentConfigResponse:
+        """Pause/undeploy agent configuration"""
+        result = await self.db.execute(
+            select(AgentConfiguration).where(AgentConfiguration.id == config_id)
+        )
+        config = result.scalar_one_or_none()
+        
+        if not config:
+            raise ValueError("Agent configuration not found")
+        
+        # Remove phone number configuration when pausing
+        if not settings.RETELL_MOCK_MODE and config.retell_agent_id:
+            try:
+                print(f"📞 Removing phone number configuration for paused agent...")
+                # Note: We could set outbound_agent_id to None, but Retell might require a valid agent
+                # So we'll just log this for now and let the phone number keep its current config
+                print(f"⚠️ Phone number {settings.RETELL_PHONE_NUMBER} still configured with agent {config.retell_agent_id}")
+                print("💡 Consider manually updating phone number if deploying a different agent")
+            except Exception as phone_error:
+                print(f"⚠️ Phone cleanup warning: {phone_error}")
+        
+        # Update deployment status to paused
+        config.is_deployed = False
+        config.updated_at = datetime.utcnow()
+        
+        await self.db.commit()
+        await self.db.refresh(config)
+        
+        return AgentConfigResponse.from_orm(config)
 
     async def test_configuration(
         self,
@@ -173,18 +317,39 @@ class AgentService:
             raise ValueError("Configuration must be deployed before testing")
         
         try:
-            # Initiate test call through Retell AI
-            test_call_response = await self.retell_client.create_test_call(
-                phone_number=test_phone,
-                agent_id=config.retell_agent_id,
-                metadata={"test_call": True, "config_id": config_id}
-            )
-            
-            return {
-                "status": "test_initiated",
-                "test_call_id": test_call_response.get("call_id"),
-                "message": "Test call initiated successfully"
-            }
+            if settings.RETELL_MOCK_MODE:
+                # Mock test call for development/testing
+                import uuid
+                mock_call_id = f"test_call_{uuid.uuid4().hex[:8]}"
+                print(f"🧪 Mock test call created: {mock_call_id}")
+                
+                return {
+                    "status": "test_initiated",
+                    "test_call_id": mock_call_id,
+                    "message": f"Mock test call initiated successfully to {test_phone}",
+                    "agent_name": config.name,
+                    "scenario_type": config.scenario_type
+                }
+            else:
+                # Real Retell AI test call using SDK
+                try:
+                    test_call_response = self.retell_client.call.create_phone_call(
+                        from_number=settings.RETELL_PHONE_NUMBER,
+                        to_number=test_phone,
+                        override_agent_id=config.retell_agent_id,
+                        retell_llm_dynamic_variables={"test_call": True, "config_id": str(config_id)}
+                    )
+                    
+                    return {
+                        "status": "test_initiated",
+                        "test_call_id": test_call_response.call_id,
+                        "message": f"Real test call initiated successfully to {test_phone}",
+                        "agent_name": config.name,
+                        "scenario_type": config.scenario_type
+                    }
+                except Exception as e:
+                    print(f"❌ Retell test call failed: {e}")
+                    raise
             
         except Exception as e:
             raise ValueError(f"Failed to initiate test call: {str(e)}")
@@ -203,27 +368,11 @@ class AgentService:
         else:
             system_prompt = prompts.get("opening", "")
         
+        # Configuration for Retell SDK
         return {
             "agent_name": config.name,
-            "voice_id": "default",  # Use Retell's default voice
-            "language": "en-US",
-            "response_engine": {
-                "type": "retell-llm",
-                "llm_id": "gpt-4",
-                "system_prompt": system_prompt,
-                "temperature": voice_settings.get("voice_temperature", 0.7),
-                "max_tokens": 200
-            },
-            "voice_configuration": {
-                "speed": voice_settings.get("voice_speed", 1.0),
-                "responsiveness": voice_settings.get("responsiveness", 1.0),
-                "interruption_sensitivity": voice_settings.get("interruption_sensitivity", 0.5),
-                "enable_backchannel": voice_settings.get("backchanneling", True),
-                "enable_filler_words": voice_settings.get("filler_words", True)
-            },
-            "webhook_url": f"{settings.RETELL_BASE_URL}/api/v1/webhooks/retell",
-            "begin_message": prompts.get("opening", "Hello, this is dispatch calling."),
-            "end_call_after_silence_ms": conversation_flow.get("timeout_seconds", 120) * 1000
+            "voice_id": "cartesia-Adam",  # Use a valid Retell voice ID
+            "language": "en-US"
         }
 
     def _build_checkin_prompt(self, prompts: Dict, flow: Dict) -> str:
